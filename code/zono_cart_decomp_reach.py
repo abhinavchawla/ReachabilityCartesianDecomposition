@@ -10,7 +10,7 @@ import time
 
 
 def linearMap(zono, phi):
-    return Zonotope(zono.box, a_mat=phi.dot(zono.a_mat), b_vec=phi.dot(zono.b_vec))
+    return Zonotope(zono.box, a_mat=zono.a_mat.dot(phi), b_vec=zono.b_vec * phi)
 
 
 def minkowskiSum(zono1, zono2):
@@ -22,10 +22,6 @@ def minkowskiSum(zono1, zono2):
 
 
 def cartesianProduct(zono1, zono2):
-    if zono2 is None:
-        return zono1
-    if zono1 is None:
-        return zono2
     new_a_mat = block_diag(zono1.a_mat, zono2.a_mat)
     new_b_vec = np.concatenate((zono1.b_vec, zono2.b_vec), axis=0)
     new_box = np.concatenate((zono1.box, zono2.box), axis=0)
@@ -50,71 +46,59 @@ def main():
 
     # init_box = [[-1.0, 1.0], [-1, 1.0], [-1.0, 1.0]]
     # gens = [[0.5, 0, 0], [0, 0.5, 0.5]]
-    fp = open("zonotope.txt")
-    d=6
-    p=2
-    gens= [[] for i in range(d)]
-    init_box=[]
-    b_vec=[]
-    for line in (fp):
-        float_list = [float(i) for i in line.split()]
-        for i in range(d):
-            gens[i].append(float_list[i])
-        init_box.append([-1.0,1.0])
-    for i in range(d):
-        b_vec.append([1])
-    print(len(gens[0]))
-    print(len(b_vec))
 
+    init_box = [[-1.0, 1.0], [-1.0, 1.0], [-1.0, 1.0]]
+    gens = [[0.2, 0.3, 0.6], [0.5, 0.5,0.3]]
     init_zono = Zonotope(init_box, np.array(gens))
-    init_zono.b_vec = np.array(b_vec)
+    init_zono.b_vec = np.array([[2], [4]])
     init_zono.plot()
 
-    zonos = []
-    dims = len(gens)
-    i=0
-    while i < dims:
-        tmp_zono=None
-        j=0
-        while j<p and i<dims:
-            direction = [0] * dims
-            direction[i] = -1
-            x1 = init_zono.max(direction)[i][0]
-            direction[i] = 1
-            x2 = init_zono.max(direction)[i][0]
-            init_box_x = [[-1.0, 1.0]]
-            gens_x = [[(x2 - x1) / 2]]
-            init_zono_x = Zonotope(init_box_x, np.array(gens_x))
-            init_zono_x.b_vec = np.array([[(x2 + x1) / 2]])
-            tmp_zono = cartesianProduct(tmp_zono, init_zono_x)
-            i+=1
-            j+=1
-        zonos.append(tmp_zono)
 
-    cartesianProduct(zonos[0], zonos[1]).plot(color="b:o")
+
+    x1 = init_zono.max([-1, 0])[0][0]
+    x2 = init_zono.max([1, 0])[0][0]
+
+    init_box_x = [[-1.0, 1.0]]
+    gens_x = [[(x2 - x1) / 2]]
+    init_zono_x = Zonotope(init_box_x, np.array(gens_x))
+    init_zono_x.b_vec = np.array([[(x2 + x1) / 2]])
+    # init_zono_x.plot(xdim=0, ydim=-1)
+
+    y1 = init_zono.max([0, -1])[1][0]
+    y2 = init_zono.max([0, 1])[1][0]
+
+    gens_y = [[(y2 - y1) / 2]]
+
+    init_zono_y = Zonotope(init_box_x, np.array(gens_y))
+    init_zono_y.b_vec = np.array([[(y2 + y1) / 2]])
+    # init_zono_y.plot(xdim=-1, ydim=0)
+
+    new_a_mat = block_diag(init_zono_x.a_mat, init_zono_y.a_mat)
+    new_b_vec = np.concatenate((init_zono_x.b_vec, init_zono_y.b_vec), axis=0)
+    cartesian_prod_zono = Zonotope(init_box[0:2], a_mat=new_a_mat, b_vec=new_b_vec)
+    cartesian_prod_zono.plot(color="b:o")
 
     # init_zono.print()
-    # init_zono_x.print()
-    # init_zono_y.print()
+    init_zono_x.print()
+    init_zono_y.print()
     # cartesian_prod_zono.print()
 
-    dynamics_mat = np.array([[-0.3, 1.6, -0.3, 1.6, -0.3, -0.3], [-1.2, 0.8, -1.2, 0.8, -1.2, -1.2], [-0.3, 1.6, -0.3, 1.6, -0.3, 1.6], [-1.2, 0.8, -1.2, 0.8, -1.2, -1.2], [-0.3, 1.6, -0.3, 1.6, -0.3, 1.6], [-1.2, 0.8, -1.2, 0.8, -1.2, -1.2]], dtype=float)  # mode 1: x' = y, y' = -x
-
+    dynamics_mat = np.array([[-0.3, 1.6], [-1.2, 0.8]], dtype=float)  # mode 1: x' = y, y' = -x
+    zonos = [init_zono_x, init_zono_y]
     b = len(zonos)
-    time_step = 1
-    num_steps = 600
+    time_step = math.pi / 8
+    num_steps = 1
     sol_mat = expm(dynamics_mat * time_step)
     Q = sol_mat
 
     start = time.time()
-    print(Q)
 
     for step in range(num_steps):
         tmp_zonos = []
         for i in range(b):
             tmp_x = None
             for j in range(b):
-                tmp_x = minkowskiSum(tmp_x, linearMap(zonos[j], Q[i*p:(i*p)+p, j*p:(j*p)+p]))
+                tmp_x = minkowskiSum(tmp_x, linearMap(zonos[j], Q[i][j]))
             tmp_zonos.append(tmp_x)
         cartesianProduct(tmp_zonos[0], tmp_zonos[1]).plot(color="b:o")
         Q = Q.dot(sol_mat)
